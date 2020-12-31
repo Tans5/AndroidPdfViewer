@@ -15,12 +15,14 @@
  */
 package com.github.barteksc.pdfviewer;
 
+import android.annotation.SuppressLint;
 import android.graphics.PointF;
 import android.graphics.RectF;
 import android.view.GestureDetector;
 import android.view.MotionEvent;
 import android.view.ScaleGestureDetector;
 import android.view.View;
+import android.view.ViewConfiguration;
 
 import com.github.barteksc.pdfviewer.model.LinkTapEvent;
 import com.github.barteksc.pdfviewer.scroll.ScrollHandle;
@@ -284,6 +286,13 @@ class DragPinchManager implements GestureDetector.OnGestureListener, GestureDete
         scaling = false;
     }
 
+
+    private Integer scrollId = null;
+    private Float lastX = null;
+    private Float lastY = null;
+    private Boolean isVerticalScroll = null;
+    private final int touchSlop = ViewConfiguration.getTouchSlop();
+    @SuppressLint("ClickableViewAccessibility")
     @Override
     public boolean onTouch(View v, MotionEvent event) {
         if (!enabled) {
@@ -291,7 +300,74 @@ class DragPinchManager implements GestureDetector.OnGestureListener, GestureDete
         }
 
         boolean retVal = scaleGestureDetector.onTouchEvent(event);
-        retVal = gestureDetector.onTouchEvent(event) || retVal;
+        final int action = event.getActionMasked();
+        final int actionIndex = event.getActionIndex();
+        switch (action) {
+            case MotionEvent.ACTION_DOWN:
+            case MotionEvent.ACTION_POINTER_DOWN: {
+                scrollId = event.getPointerId(actionIndex);
+                lastX = event.getX(event.findPointerIndex(scrollId));
+                lastY = event.getY(event.findPointerIndex(scrollId));
+                isVerticalScroll = null;
+                retVal = gestureDetector.onTouchEvent(event) || retVal;
+                break;
+            }
+
+            case MotionEvent.ACTION_CANCEL:
+            case MotionEvent.ACTION_UP:
+            case MotionEvent.ACTION_MOVE: {
+                if (lastY != null && lastX != null && scrollId != null) {
+                    MotionEvent scrollFixedEvent = event;
+                    float x = event.getX(event.findPointerIndex(scrollId));
+                    float y = event.getY(event.findPointerIndex(scrollId));
+                    float newX = x;
+                    float newY = y;
+                    final Boolean isVerticalScroll = this.isVerticalScroll;
+                    if (isVerticalScroll == null) {
+                        if (Math.abs(x - lastX) > touchSlop || Math.abs(y - lastY) > touchSlop) {
+                            if (Math.abs(x - lastX) > Math.abs(y - lastY)) {
+                                newX = x;
+                                newY = lastY;
+                                this.isVerticalScroll = false;
+                            } else {
+                                newX = lastX;
+                                newY = y;
+                                this.isVerticalScroll = true;
+                            }
+                        }
+                    } else if (isVerticalScroll) {
+                        newX = lastX;
+                        newY = y;
+                    } else {
+                        newX = x;
+                        newY = lastY;
+                    }
+                    if (newX != x || newY != y) {
+                        scrollFixedEvent = MotionEvent.obtain(event.getDownTime(), event.getEventTime(), event.getAction(), newX, newY, event.getMetaState());
+                    }
+                    lastX = newX;
+                    lastY = newY;
+                    retVal = gestureDetector.onTouchEvent(scrollFixedEvent) || retVal;
+                    if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+                        scrollId = null;
+                        this.isVerticalScroll = null;
+                    }
+                }
+                break;
+            }
+
+            case MotionEvent.ACTION_POINTER_UP: {
+                if (event.getPointerId(actionIndex) == scrollId) {
+                    final int newIndex = actionIndex == 0 ? 1 : 0;
+                    scrollId = event.getPointerId(newIndex);
+                    isVerticalScroll = null;
+                }
+                lastX = event.getX(event.findPointerIndex(scrollId));
+                lastY = event.getY(event.findPointerIndex(scrollId));
+                retVal = gestureDetector.onTouchEvent(event) || retVal;
+                break;
+            }
+        }
 
         if (event.getAction() == MotionEvent.ACTION_UP) {
             if (scrolling) {
