@@ -123,6 +123,7 @@ public class PDFViewActivity extends AppCompatActivity implements OnPageChangeLi
                 .spacing(10) // in dp
                 .onPageError(this)
                 .pageFitPolicy(FitPolicy.BOTH)
+                .lockVerticalHorizontalScroll(true)
                 .load();
     }
 

@@ -48,6 +48,7 @@ class DragPinchManager implements GestureDetector.OnGestureListener, GestureDete
     private boolean scrolling = false;
     private boolean scaling = false;
     private boolean enabled = false;
+    private boolean lockVHScroll = false;
 
     DragPinchManager(PDFView pdfView, AnimationManager animationManager) {
         this.pdfView = pdfView;
@@ -55,6 +56,10 @@ class DragPinchManager implements GestureDetector.OnGestureListener, GestureDete
         gestureDetector = new GestureDetector(pdfView.getContext(), this);
         scaleGestureDetector = new ScaleGestureDetector(pdfView.getContext(), this);
         pdfView.setOnTouchListener(this);
+    }
+
+    void lockVerticalHorizontalScroll(boolean lockVHScroll) {
+        this.lockVHScroll = lockVHScroll;
     }
 
     void enable() {
@@ -287,11 +292,11 @@ class DragPinchManager implements GestureDetector.OnGestureListener, GestureDete
     }
 
 
-    private Integer scrollId = null;
     private Float lastX = null;
     private Float lastY = null;
     private Boolean isVerticalScroll = null;
     private final int touchSlop = ViewConfiguration.getTouchSlop();
+    private boolean isInMultiPointer = false;
     @SuppressLint("ClickableViewAccessibility")
     @Override
     public boolean onTouch(View v, MotionEvent event) {
@@ -301,72 +306,83 @@ class DragPinchManager implements GestureDetector.OnGestureListener, GestureDete
 
         boolean retVal = scaleGestureDetector.onTouchEvent(event);
         final int action = event.getActionMasked();
-        final int actionIndex = event.getActionIndex();
-        switch (action) {
-            case MotionEvent.ACTION_DOWN:
-            case MotionEvent.ACTION_POINTER_DOWN: {
-                scrollId = event.getPointerId(actionIndex);
-                lastX = event.getX(event.findPointerIndex(scrollId));
-                lastY = event.getY(event.findPointerIndex(scrollId));
-                isVerticalScroll = null;
-                retVal = gestureDetector.onTouchEvent(event) || retVal;
-                break;
-            }
+        if (action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+            isInMultiPointer = false;
+        }
+        if (action == MotionEvent.ACTION_POINTER_DOWN || action == MotionEvent.ACTION_POINTER_UP) {
+            isInMultiPointer = true;
+            event.setAction(MotionEvent.ACTION_CANCEL);
+            gestureDetector.onTouchEvent(event);
+        }
+        if (lockVHScroll) {
+            if (!isInMultiPointer) {
+                switch (action) {
+                    // case MotionEvent.ACTION_POINTER_DOWN:
+                    case MotionEvent.ACTION_DOWN: {
+                        lastX = event.getX();
+                        lastY = event.getY();
+                        isVerticalScroll = null;
+                        retVal = gestureDetector.onTouchEvent(event) || retVal;
+                        break;
+                    }
 
-            case MotionEvent.ACTION_CANCEL:
-            case MotionEvent.ACTION_UP:
-            case MotionEvent.ACTION_MOVE: {
-                if (lastY != null && lastX != null && scrollId != null) {
-                    MotionEvent scrollFixedEvent = event;
-                    float x = event.getX(event.findPointerIndex(scrollId));
-                    float y = event.getY(event.findPointerIndex(scrollId));
-                    float newX = x;
-                    float newY = y;
-                    final Boolean isVerticalScroll = this.isVerticalScroll;
-                    if (isVerticalScroll == null) {
-                        if (Math.abs(x - lastX) > touchSlop || Math.abs(y - lastY) > touchSlop) {
-                            if (Math.abs(x - lastX) > Math.abs(y - lastY)) {
-                                newX = x;
-                                newY = lastY;
-                                this.isVerticalScroll = false;
-                            } else {
+                    case MotionEvent.ACTION_CANCEL:
+                    case MotionEvent.ACTION_UP:
+                    case MotionEvent.ACTION_MOVE: {
+                        if (lastY != null && lastX != null) {
+                            MotionEvent scrollFixedEvent = event;
+                            float x = event.getX();
+                            float y = event.getY();
+                            float newX = x;
+                            float newY = y;
+                            final Boolean isVerticalScroll = this.isVerticalScroll;
+                            if (isVerticalScroll == null) {
+                                if (Math.abs(x - lastX) > touchSlop || Math.abs(y - lastY) > touchSlop) {
+                                    if (Math.abs(x - lastX) > Math.abs(y - lastY)) {
+                                        newX = x;
+                                        newY = lastY;
+                                        this.isVerticalScroll = false;
+                                    } else {
+                                        newX = lastX;
+                                        newY = y;
+                                        this.isVerticalScroll = true;
+                                    }
+                                }
+                            } else if (isVerticalScroll) {
                                 newX = lastX;
                                 newY = y;
-                                this.isVerticalScroll = true;
+                            } else {
+                                newX = x;
+                                newY = lastY;
+                            }
+                            if (newX != x || newY != y) {
+                                scrollFixedEvent = MotionEvent.obtain(event.getDownTime(), event.getEventTime(), event.getAction(), newX, newY, event.getMetaState());
+                            }
+                            lastX = newX;
+                            lastY = newY;
+                            retVal = gestureDetector.onTouchEvent(scrollFixedEvent) || retVal;
+                            if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+                                this.isVerticalScroll = null;
                             }
                         }
-                    } else if (isVerticalScroll) {
-                        newX = lastX;
-                        newY = y;
-                    } else {
-                        newX = x;
-                        newY = lastY;
+                        break;
                     }
-                    if (newX != x || newY != y) {
-                        scrollFixedEvent = MotionEvent.obtain(event.getDownTime(), event.getEventTime(), event.getAction(), newX, newY, event.getMetaState());
-                    }
-                    lastX = newX;
-                    lastY = newY;
-                    retVal = gestureDetector.onTouchEvent(scrollFixedEvent) || retVal;
-                    if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
-                        scrollId = null;
-                        this.isVerticalScroll = null;
-                    }
-                }
-                break;
-            }
 
-            case MotionEvent.ACTION_POINTER_UP: {
-                if (event.getPointerId(actionIndex) == scrollId) {
-                    final int newIndex = actionIndex == 0 ? 1 : 0;
-                    scrollId = event.getPointerId(newIndex);
-                    isVerticalScroll = null;
+//            case MotionEvent.ACTION_POINTER_UP: {
+//                if (event.getPointerId(actionIndex) == scrollId) {
+//                    final int newIndex = actionIndex == 0 ? 1 : 0;
+//                    scrollId = event.getPointerId(newIndex);
+//                    isVerticalScroll = null;
+//                }
+//                lastX = event.getX(event.findPointerIndex(scrollId));
+//                lastY = event.getY(event.findPointerIndex(scrollId));
+//                retVal = gestureDetector.onTouchEvent(event) || retVal;
+//                break;
+//            }
                 }
-                lastX = event.getX(event.findPointerIndex(scrollId));
-                lastY = event.getY(event.findPointerIndex(scrollId));
-                retVal = gestureDetector.onTouchEvent(event) || retVal;
-                break;
             }
+        } else {
+            retVal = gestureDetector.onTouchEvent(event) || retVal;
         }
 
         if (event.getAction() == MotionEvent.ACTION_UP) {

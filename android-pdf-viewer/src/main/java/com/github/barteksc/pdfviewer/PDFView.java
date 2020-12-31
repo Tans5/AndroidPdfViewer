@@ -1521,6 +1521,11 @@ public class PDFView extends RelativeLayout {
             return this;
         }
 
+        public Configurator lockVerticalHorizontalScroll(boolean lockVHScroll) {
+            PDFView.this.dragPinchManager.lockVerticalHorizontalScroll(lockVHScroll);
+            return this;
+        }
+
         public void load() {
             if (!hasSize) {
                 waitingDocumentConfigurator = this;
