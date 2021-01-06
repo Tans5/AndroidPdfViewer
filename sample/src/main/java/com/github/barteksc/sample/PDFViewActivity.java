@@ -121,6 +121,7 @@ public class PDFViewActivity extends AppCompatActivity implements OnPageChangeLi
                 .scrollHandle(new DefaultScrollHandle(this))
                 .spacing(10) // in dp
                 .onPageError(this)
+                .lockVerticalHorizontalScroll(true)
                 .load();
     }
 
@@ -135,6 +136,7 @@ public class PDFViewActivity extends AppCompatActivity implements OnPageChangeLi
                 .scrollHandle(new DefaultScrollHandle(this))
                 .spacing(10) // in dp
                 .onPageError(this)
+                .lockVerticalHorizontalScroll(true)
                 .load();
     }
 

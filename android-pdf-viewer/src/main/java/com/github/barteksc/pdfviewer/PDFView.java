@@ -397,6 +397,10 @@ public class PDFView extends RelativeLayout {
         showPage(page);
     }
 
+    public void lockVerticalHorizontalScroll(boolean lockVHScroll) {
+        this.dragPinchManager.setLockVerticalHorizontalScroll(lockVHScroll);
+    }
+
     public void jumpTo(int page) {
         jumpTo(page, false);
     }
@@ -1553,6 +1557,11 @@ public class PDFView extends RelativeLayout {
 
         public Configurator invalidPageColor(int invalidPageColor) {
             this.invalidPageColor = invalidPageColor;
+            return this;
+        }
+
+        public Configurator lockVerticalHorizontalScroll(boolean lockVHScroll) {
+            PDFView.this.dragPinchManager.setLockVerticalHorizontalScroll(lockVHScroll);
             return this;
         }
 

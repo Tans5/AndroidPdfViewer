@@ -20,6 +20,7 @@ import android.view.GestureDetector;
 import android.view.MotionEvent;
 import android.view.ScaleGestureDetector;
 import android.view.View;
+import android.view.ViewConfiguration;
 
 import com.github.barteksc.pdfviewer.scroll.ScrollHandle;
 import com.github.barteksc.pdfviewer.listener.OnTapListener;
@@ -45,6 +46,7 @@ class DragPinchManager implements GestureDetector.OnGestureListener, GestureDete
 
     private boolean scrolling = false;
     private boolean scaling = false;
+    private boolean lockVHScroll = false;
 
     public DragPinchManager(PDFView pdfView, AnimationManager animationManager) {
         this.pdfView = pdfView;
@@ -78,6 +80,10 @@ class DragPinchManager implements GestureDetector.OnGestureListener, GestureDete
 
     public void setSwipeVertical(boolean swipeVertical) {
         this.swipeVertical = swipeVertical;
+    }
+
+    public void setLockVerticalHorizontalScroll(boolean lockVHScroll) {
+        this.lockVHScroll = lockVHScroll;
     }
 
     @Override
@@ -198,10 +204,81 @@ class DragPinchManager implements GestureDetector.OnGestureListener, GestureDete
         scaling = false;
     }
 
+
+    private Float lastX = null;
+    private Float lastY = null;
+    private float initX = 0f;
+    private float initY = 0f;
+    private Boolean isVerticalScroll = null;
+    private final float touchSlop = ViewConfiguration.getTouchSlop();
+    private boolean handleByScaleDetector = false;
+
     @Override
     public boolean onTouch(View v, MotionEvent event) {
         boolean retVal = scaleGestureDetector.onTouchEvent(event);
-        retVal = gestureDetector.onTouchEvent(event) || retVal;
+        final int action = event.getActionMasked();
+        if (action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_UP) {
+            handleByScaleDetector = false;
+        }
+        if (action == MotionEvent.ACTION_POINTER_DOWN || action == MotionEvent.ACTION_POINTER_UP) {
+            handleByScaleDetector = true;
+            event.setAction(MotionEvent.ACTION_CANCEL);
+            gestureDetector.onTouchEvent(event);
+        } else if (lockVHScroll && !handleByScaleDetector) {
+            switch (action) {
+                case MotionEvent.ACTION_DOWN: {
+                    initX = lastX = event.getX();
+                    initY = lastY = event.getY();
+                    isVerticalScroll = null;
+                    retVal = gestureDetector.onTouchEvent(event) || retVal;
+                    break;
+                }
+
+                case MotionEvent.ACTION_CANCEL:
+                case MotionEvent.ACTION_UP:
+                case MotionEvent.ACTION_MOVE: {
+                    if (lastY != null && lastX != null) {
+                        MotionEvent scrollFixedEvent = event;
+                        float x = event.getX();
+                        float y = event.getY();
+                        float newX = x;
+                        float newY = y;
+                        final Boolean isVerticalScroll = this.isVerticalScroll;
+                        if (isVerticalScroll == null) {
+                            if (Math.abs(x - initX) > touchSlop || Math.abs(y - initY) > touchSlop) {
+                                if (Math.abs(x - initX) > Math.abs(y - initY)) {
+                                    newX = x;
+                                    newY = lastY;
+                                    this.isVerticalScroll = false;
+                                } else {
+                                    newX = lastX;
+                                    newY = y;
+                                    this.isVerticalScroll = true;
+                                }
+                            }
+                        } else if (isVerticalScroll) {
+                            newX = lastX;
+                            newY = y;
+                        } else {
+                            newX = x;
+                            newY = lastY;
+                        }
+                        if (newX != x || newY != y) {
+                            scrollFixedEvent = MotionEvent.obtain(event.getDownTime(), event.getEventTime(), event.getAction(), newX, newY, event.getMetaState());
+                        }
+                        lastX = newX;
+                        lastY = newY;
+                        retVal = gestureDetector.onTouchEvent(scrollFixedEvent) || retVal;
+                        if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+                            this.isVerticalScroll = null;
+                        }
+                    }
+                    break;
+                }
+            }
+        } else if (!handleByScaleDetector) {
+            retVal = gestureDetector.onTouchEvent(event) || retVal;
+        }
 
         if (event.getAction() == MotionEvent.ACTION_UP) {
             if (scrolling) {
